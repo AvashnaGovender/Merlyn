@@ -11,7 +11,9 @@ root = Path(os.path.dirname(os.getcwd()))
 file_id_list= data['file_id_list']
 train_list= data['train_list']
 valid_list= data['valid_list']
+test_list = data['test_list']
 labels_dir= data['labels_dir']
+test_labels_dir = data['test_labels_dir']
 lf0_dir = data['lf0_dir']
 mgc_dir = data['mgc_dir']
 bap_dir = data['bap_dir']
@@ -21,20 +23,40 @@ acoustic_feats_dir = 'acoustic_feats'
 duration_feats_dir = 'duration_feats'
 question_filepath = data['question_filepath']
 
-
-
 models_path=  os.path.join(root, model_id, "models" )
-bin_no_sil = os.path.join(root, model_id, label_feats_dir, "nn_no_sil_490") # output dir for binary labels without silence
+
+bin_no_sil = os.path.join(root, model_id, label_feats_dir, "nn_no_sil_481") # output dir for binary labels without silence
+acoustic_bin_no_sil = os.path.join(root, model_id, label_feats_dir, "nn_no_sil_490") # output dir for binary labels without silence
+
+
+bin_labels_path = os.path.join(root, model_id, label_feats_dir, "binary_label_481")
+acoustic_bin_labels_path = os.path.join(root, model_id, label_feats_dir, "binary_label_490")
+
+bin_no_sil_norm = os.path.join(root, model_id, label_feats_dir,"nn_no_silence_lab_norm_481")
+acoustic_bin_no_sil_norm = os.path.join(root, model_id, label_feats_dir,"nn_no_silence_lab_norm_490")
+
 indices_filepath = os.path.join(root, model_id, label_feats_dir,"non_silence_indices")
-bin_labels_path = os.path.join(root, model_id, label_feats_dir, "binary_label_490")
-bin_no_sil_norm = os.path.join(root, model_id, label_feats_dir,"nn_no_silence_lab_norm_490")
+acoustic_indices_filepath = os.path.join(root, model_id, label_feats_dir,"ac_non_silence_indices")
+
 bin_acoustic_feats = os.path.join(root, model_id, acoustic_feats_dir,"norm_feats")
 output_acoustic = os.path.join(root, model_id, acoustic_feats_dir,"nn_mgc_lf0_vuv_bap_187") # mgc, lf0, vuv, bap feats with 180+3+1+3
+acoustic_no_sil = os.path.join(root, model_id, acoustic_feats_dir,"acoustic_no_sil") # mgc, lf0, vuv, bap feats with 180+3+1+3
+
+norm_info = os.path.join(root, model_id, label_feats_dir,"norm_info.norm")
+ac_norm_info = os.path.join(root, model_id, label_feats_dir,"ac_norm_info.norm")
+var = os.path.join(root, model_id, acoustic_feats_dir,"var")
+
+
 duration_path = os.path.join(root,model_id,duration_feats_dir, "durations")            # durations output directory
-norm_info = os.path.join(root, model_id, acoustic_feats_dir,"norm_info.norm")
 bin_no_sil_dur =  os.path.join(root,model_id,duration_feats_dir, "dur_no_sil")
 dur_no_sil_norm = os.path.join(root,model_id,duration_feats_dir, "dur_norm")
 dur_norm_info = os.path.join(root,model_id,duration_feats_dir, "dur_norm_info.norm")
+
+gen_path = os.path.join(root,model_id, "gen")
+
+dur_latest_weights = os.path.join(root, model_id, "models", "duration_model", "latest_model.pyt" )
+acoustic_latest_weights = os.path.join(root, model_id, "models", "acoustic_model", "latest_model.pyt" )
+
 
 lab_extension = ".lab"
 dur_extension = ".dur"
@@ -69,7 +91,6 @@ frame_length= data['frame_length']
 label_dimension= data['label_dimension']
 silence_pattern= data['silence_pattern']
 
-add_frame_features = data['add_frame_features']
 frame_feat_dim = data['frame_feat_dim']
 
 remove_silence = data['remove_silence']
@@ -88,8 +109,8 @@ dmgc_dim = mgc_dim * 3
 dbap_dim =  bap_dim * 3
 dlf0_dim = lf0_dim * 3
 
-feats = {'mgc':dmgc_dim,'vuv':vuv_dim,'bap':dbap_dim,'lf0':dlf0_dim}
-feats_in = {'mgc':mgc_dim,'vuv':vuv_dim,'bap':bap_dim,'lf0':lf0_dim}
+feats = {'mgc':dmgc_dim,'vuv':vuv_dim,'lf0':dlf0_dim, 'bap':dbap_dim}
+feats_in = {'mgc':mgc_dim,'vuv':vuv_dim,'lf0':lf0_dim, 'bap':bap_dim}
 
 feat_dimension = dmgc_dim + dbap_dim + dlf0_dim + 1
 compute_dynamic = True
@@ -102,5 +123,15 @@ warmup_epoch= data['warmup_epoch']
 reduce_lr= data['reduce_lr']
 checkpoint_every_n = data['checkpoint_every_n']
 
-DURATION = data['DURATION']
-ACOUSTIC = data['ACOUSTIC']
+vocoder_type = 'WORLD'
+WORLD = "/afs/inf.ed.ac.uk/group/cstr/projects/phd/s1689645_avashna/merlin/tools/bin/WORLD"
+SPTK = "/afs/inf.ed.ac.uk/group/cstr/projects/phd/s1689645_avashna/merlin/tools/bin/SPTK-3.9"
+
+pf_coef = 1.4
+fw_coef = 0.58
+co_coef = 511
+fl_coef = 1024
+sr = 16000
+
+TRAIN_DURATION = data['TRAIN_DURATION']
+TRAIN_ACOUSTIC = data['TRAIN_ACOUSTIC']

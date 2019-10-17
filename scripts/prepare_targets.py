@@ -5,7 +5,7 @@ import os
 import sys
 import multiprocessing
 from multiprocessing import Pool, cpu_count
-import load_config_test as cfg
+import load_config as cfg
 from utils import save_binary, load_binary_file_frame
 
 
@@ -176,8 +176,7 @@ def prepare_feats(out_file, idx, stream_dim_index, stream_start_index):
             dim_index = stream_start_index[stream_name]
 
 
-            out_data_matrix[0:out_frame_number, dim_index:dim_index+in_feature_dim] = features
-            dim_index = dim_index+in_feature_dim
+
 
             if stream_name in ['lf0', 'F0']:   ## F0 added for GlottHMM
                 features, vuv_vector = interpolate_f0(features)
@@ -185,6 +184,9 @@ def prepare_feats(out_file, idx, stream_dim_index, stream_start_index):
                 ### if vuv information to be recorded, store it in corresponding column
                 if cfg.record_vuv:
                     out_data_matrix[0:out_frame_number, stream_start_index['vuv']:stream_start_index['vuv']+1] = vuv_vector
+
+            out_data_matrix[0:out_frame_number, dim_index:dim_index+in_feature_dim] = features
+            dim_index = dim_index+in_feature_dim
 
             if cfg.compute_dynamic:
 
@@ -219,9 +221,9 @@ if __name__ == '__main__':
 
     #Configuration
 
-    prepare_features = False
-    remove_silence = False
-    normalisation = False
+    prepare_features = True
+    remove_silence = True
+    normalisation = True
     dur_normalisation = True
 
     fid = open(cfg.file_id_list)
@@ -230,7 +232,7 @@ if __name__ == '__main__':
     dur_filenames = [os.path.join(cfg.duration_path, x + cfg.dur_extension) for x in filenames]
     lf0_filenames = [os.path.join(cfg.lf0_dir, x + cfg.lf0_extension) for x in filenames]
     out_filenames = [os.path.join(cfg.output_acoustic, x + cfg.cmp_extension) for x in filenames]
-    indices_filenames = [os.path.join(cfg.indices_filepath, x + '.npy') for x in filenames]
+    indices_filenames = [os.path.join(cfg.acoustic_indices_filepath, x + '.npy') for x in filenames]
     norm_filenames = [os.path.join(cfg.bin_acoustic_feats, x + cfg.cmp_extension )for x in filenames]
     dur_no_sil = [os.path.join(cfg.bin_no_sil_dur, x + cfg.dur_extension )for x in filenames]
     dur_norm_filenames = [os.path.join(cfg.dur_no_sil_norm, x + cfg.dur_extension )for x in filenames]
@@ -238,6 +240,7 @@ if __name__ == '__main__':
     if not os.path.exists(cfg.output_acoustic):
         os.system("mkdir -p %s" %cfg.output_acoustic)
         os.system("mkdir -p %s" %cfg.bin_acoustic_feats)
+        os.system("mkdir -p %s" %cfg.var)
 
     jobs = []
     pool = Pool(processes=cpu_count())
@@ -303,6 +306,8 @@ if __name__ == '__main__':
 
     if normalisation:
 
+        var_dir  = cfg.var
+
         #Compute the mean and std vector for normlisation
         global_mean_vector = compute_mean(out_filenames, 0, cfg.feat_dimension)
         global_std_vector = compute_std(out_filenames, global_mean_vector, 0, cfg.feat_dimension)
@@ -321,7 +326,21 @@ if __name__ == '__main__':
         cmp_norm_info = np.concatenate((global_mean_vector, global_std_vector), axis=0)
         cmp_norm_info = np.array(cmp_norm_info, 'float32')
 
-        save_binary(cfg.norm_info, cmp_norm_info)
+        save_binary(cfg.ac_norm_info, cmp_norm_info)
+
+        feature_index = 0
+        for feature_name in list(cfg.feats.keys()):
+            feature_std_vector = np.array(global_std_vector[:,feature_index:feature_index+cfg.feats[feature_name]], 'float32')
+            var_file = os.path.join(cfg.var,feature_name + ".var" )
+            fid = open(var_file, 'w')
+            feature_var_vector = feature_std_vector**2
+            feature_var_vector.tofile(fid)
+            fid.close()
+
+            print('saved %s variance vector to %s' %(feature_name, var_file))
+
+            feature_index += cfg.feats[feature_name]
+
 
     if dur_normalisation:
 

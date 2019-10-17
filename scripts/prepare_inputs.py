@@ -5,8 +5,7 @@ import re
 import sys
 import os
 import numpy as np
-from dataloader 
-import load_config_test as cfg
+import load_config as cfg
 import multiprocessing
 from multiprocessing import Pool, cpu_count
 from utils import check_silence_pattern, save_binary, load_binary_file
@@ -150,18 +149,18 @@ def pattern_matching_binary(label, questions_dict, continous = False ):
         return  lab_binary_vector
 
 
-def load_aligned_labels(input_file, questions_dict, continuous_dict):
-
+def load_aligned_labels(input_file, questions_dict, continuous_dict, add_frame_features):
 
     state_number = cfg.n_states
 
     label_feature_index = 0
-
-    if cfg.add_frame_features:
-         full_dim = cfg.lab_dim + 9
+    d = cfg.lab_dim
+    if add_frame_features:
+         full_dim = cfg.lab_dim + cfg.frame_feat_dim
 
     else:
-         full_dim = cfg.label_dimension
+         full_dim = cfg.lab_dim
+
 
     label_feature_matrix = np.empty((cfg.max_dim, full_dim))
 
@@ -256,27 +255,33 @@ def load_aligned_labels(input_file, questions_dict, continuous_dict):
                         phone_duration += int((int(file_list[1]) - int(file_list[0]))/cfg.frame_length)
 
 
-        if cfg.add_frame_features:
+        if add_frame_features:
 
-            dimension = cfg.label_dimension
             current_block_binary_array = np.zeros((frame_number, full_dim))
             for i in range(frame_number):
-                current_block_binary_array[i, 0:dimension] = label_vector
+                current_block_binary_array[i, 0:d] = label_vector
 
                 ## Zhizheng's original 9 subphone features:
-                current_block_binary_array[i, dimension+0] = float(i+1) / float(frame_number)   ## fraction through state (forwards)
-                current_block_binary_array[i, dimension+1] = float(frame_number - i) / float(frame_number)  ## fraction through state (backwards)
-                current_block_binary_array[i, dimension+2] = float(frame_number)  ## length of state in frames
-                current_block_binary_array[i, dimension+3] = float(state_index)   ## state index (counting forwards)
-                current_block_binary_array[i, dimension+4] = float(state_index_backward) ## state index (counting backwards)
+                current_block_binary_array[i, d+0] = float(i+1) / float(frame_number)   ## fraction through state (forwards)
+                current_block_binary_array[i, d+1] = float(frame_number - i) / float(frame_number)  ## fraction through state (backwards)
+                current_block_binary_array[i, d+2] = float(frame_number)  ## length of state in frames
+                current_block_binary_array[i, d+3] = float(state_index)   ## state index (counting forwards)
+                current_block_binary_array[i, d+4] = float(state_index_backward) ## state index (counting backwards)
 
-                current_block_binary_array[i, dimension+5] = float(phone_duration)   ## length of phone in frames
-                current_block_binary_array[i, dimension+6] = float(frame_number) / float(phone_duration)   ## fraction of the phone made up by current state
-                current_block_binary_array[i, dimension+7] = float(phone_duration - i - state_duration_base) / float(phone_duration) ## fraction through phone (backwards)
-                current_block_binary_array[i, dimension+8] = float(state_duration_base + i + 1) / float(phone_duration)  ## fraction through phone (forwards)
+                current_block_binary_array[i, d+5] = float(phone_duration)   ## length of phone in frames
+                current_block_binary_array[i, d+6] = float(frame_number) / float(phone_duration)   ## fraction of the phone made up by current state
+                current_block_binary_array[i, d+7] = float(phone_duration - i - state_duration_base) / float(phone_duration) ## fraction through phone (backwards)
+                current_block_binary_array[i, d+8] = float(state_duration_base + i + 1) / float(phone_duration)  ## fraction through phone (forwards)
 
 
             label_feature_matrix[label_feature_index:label_feature_index+frame_number,] = current_block_binary_array
+            if cfg.remove_silence:
+                silence_binary_flag = check_silence_pattern(full_label, cfg.silence_pattern)
+
+                if silence_binary_flag == 0:
+                    for frame_index in range(frame_number):
+                        nonsilence_frame_index_list.append(label_feature_index + frame_index)
+
             label_feature_index = label_feature_index + frame_number
         elif state_index == state_number:
             current_block_binary_array = label_vector
@@ -285,13 +290,10 @@ def load_aligned_labels(input_file, questions_dict, continuous_dict):
 
             if cfg.remove_silence:
 
-                silence_binary_flag = check_silence_pattern(full_label)
-
+                silence_binary_flag = check_silence_pattern(full_label, cfg.silence_pattern)
                 if silence_binary_flag == 0:
-                    nonsilence_frame_index_list.append(label_feature_index)
-
-            label_feature_index = label_feature_index + 1
-                    #base_frame_index = base_frame_index + 1
+                        nonsilence_frame_index_list.append(label_feature_index)
+                label_feature_index = label_feature_index + 1
 
 
         if cfg.feature_type == "binary":
@@ -339,11 +341,13 @@ def load_aligned_labels(input_file, questions_dict, continuous_dict):
         print('WARNING: no silence found!')
 
     nonsilence_indices = [ix for ix in nonsilence_frame_index_list if ix < total_frames]
-    print(nonsilence_indices)
     print("silence frames", total_frames - len(nonsilence_frame_index_list))
     no_silence = label_feature_matrix[nonsilence_indices,]
     print('made label matrix with no sil of %d frames x %d labels' % no_silence.shape )
-    dur_no_silence = dur_feature_matrix[nonsilence_indices,]
+    if not add_frame_features:
+        dur_no_silence = dur_feature_matrix[nonsilence_indices,]
+    else:
+        dur_no_silence = dur_feature_matrix
 
 
     return label_feature_matrix, no_silence, dur_feature_matrix, nonsilence_indices, dur_no_silence
@@ -363,37 +367,40 @@ def get_min_max(min_value_matrix, max_value_matrix, full_dim):
     return min_vector, max_vector
 
 
-def process(filename, questions_dict,continuous_dict):
+def process(filename, questions_dict,continuous_dict, labels_path, no_sil_path, indices_filepath, add_frame_features):
 
         basename_ext = filename.split("/")[2]
-        output_file_name = os.path.join(cfg.bin_labels_path , basename_ext)
-        output_no_sil_file = os.path.join(cfg.bin_no_sil, basename_ext)
+        output_file_name = os.path.join(labels_path , basename_ext)
+        output_no_sil_file = os.path.join(no_sil_path, basename_ext)
         basename = basename_ext[:-4]
         output_dur_filename = os.path.join(cfg.duration_path,  basename + cfg.dur_extension)
-        indices_filename = os.path.join(cfg.indices_filepath, basename + '.npy')
+        indices_filename = os.path.join(indices_filepath, basename + '.npy')
         dur_no_sil_file = os.path.join(cfg.bin_no_sil_dur, basename + cfg.dur_extension)
 
-        label_feature_matrix, no_silence, durations, nonsilence_indices, dur_no_silence = load_aligned_labels(filename, questions_dict,continuous_dict)
+        label_feature_matrix, no_silence, durations, nonsilence_indices, dur_no_silence = load_aligned_labels(filename, questions_dict,continuous_dict, add_frame_features)
 
         # Binary label features
         # label_feature_matrix = load_state_aligned_labels(filename, state=False) #for phone aligned labels
+        print(output_file_name)
         save_binary(output_file_name, label_feature_matrix)
 
         save_binary(indices_filename, nonsilence_indices)
 
         # Durations
-        save_binary(output_dur_filename, durations)
+        if not add_frame_features:
+            save_binary(output_dur_filename, durations)
 
         # No silence
         if cfg.remove_silence:
             print("Saving no silence labs and durs")
             save_binary(output_no_sil_file, no_silence)
-            save_binary(dur_no_sil_file, dur_no_silence)
+            if not add_frame_features:
+                save_binary(dur_no_sil_file, dur_no_silence)
 
 
-def normalise(filename, full_dim, min_vector, max_vector):
+def normalise(filename, full_dim, min_vector, max_vector, bin_no_sil, norm_filepath):
 
-    no_sil_filename = os.path.join(cfg.bin_no_sil, filename + cfg.lab_extension)
+    no_sil_filename = os.path.join(bin_no_sil, filename + cfg.lab_extension)
 
     fea_max_min_diff = max_vector - min_vector
     diff_value = cfg.target_max_value - cfg.target_min_value
@@ -412,7 +419,7 @@ def normalise(filename, full_dim, min_vector, max_vector):
     diff_norm_matrix = np.tile(target_max_min_diff, (frame_number, 1)) / fea_diff_matrix
 
     norm_features = diff_norm_matrix * (features - fea_min_matrix) + target_min_matrix
-    out_file = os.path.join(cfg.bin_no_sil_norm, filename + cfg.lab_extension)
+    out_file = os.path.join(norm_filepath, filename + cfg.lab_extension)
     save_binary(out_file, norm_features)
 
 
@@ -426,11 +433,6 @@ if __name__ == '__main__':
 
     n_questions = len(questions)
 
-    if cfg.add_frame_features:
-            full_dim = cfg.lab_dim + 9 # 5 state features + 4 phone feature
-    else:
-        full_dim = cfg.lab_dim
-
     questions_dict, continuous_dict = create_questions_query(questions)
 
     fid = open(cfg.file_id_list)
@@ -439,67 +441,138 @@ if __name__ == '__main__':
     lab_filenames = [cfg.labels_dir + x + cfg.lab_extension for x in filenames]
     file_number = len(all_filenames)
 
-    if cfg.min_max_normalisation:
-        min_value_matrix = np.zeros((file_number, full_dim))
-        max_value_matrix = np.zeros((file_number, full_dim))
+    if cfg.TRAIN_DURATION:
+        if not os.path.exists(cfg.bin_labels_path):
+            os.system("mkdir -p %s" %cfg.bin_labels_path)
+            os.system("mkdir -p %s" %cfg.indices_filepath)
+            os.system("mkdir -p %s" %cfg.bin_no_sil)
+            os.system("mkdir -p %s" %cfg.bin_no_sil_norm)
+            os.system("mkdir -p %s" %cfg.duration_path)
+            os.system("mkdir -p %s" %cfg.bin_no_sil_dur)
+            os.system("mkdir -p %s" %cfg.dur_no_sil_norm)
 
+        # Make label files for duration model (dimension 481)
+        jobs = []
+        pool = Pool(processes=cpu_count())
 
-    if not os.path.exists(cfg.bin_labels_path):
-        os.system("mkdir -p %s" %cfg.bin_labels_path)
-        os.system("mkdir -p %s" %cfg.indices_filepath)
-        os.system("mkdir -p %s" %cfg.bin_no_sil)
-        os.system("mkdir -p %s" %cfg.bin_no_sil_norm)
-        os.system("mkdir -p %s" %cfg.duration_path)
-        os.system("mkdir -p %s" %cfg.bin_no_sil_dur)
-        os.system("mkdir -p %s" %cfg.dur_no_sil_norm)
+        add_frame_features = False
+        full_dim = cfg.lab_dim
 
-
-    jobs = []
-    pool = Pool(processes=cpu_count())
-
-    for idx,filename in enumerate(lab_filenames):
-
-        job_process = pool.apply_async(process, (filename,questions_dict, continuous_dict ))
-        jobs.append(job_process)
-
-    for job in jobs:
-        job.get()
-
-
-    for idx,filename in enumerate(filenames):
-
-        no_sil_filename = os.path.join(cfg.bin_no_sil, filename + cfg.lab_extension)
-        #Load no silence
-        no_silence = load_binary_file(no_sil_filename, full_dim)
-
-        #Extarct min-max
         if cfg.min_max_normalisation:
-            temp_min = np.amin(no_silence, axis = 0)
-            temp_max = np.amax(no_silence, axis = 0)
-            min_value_matrix[idx, ] = temp_min;
-            max_value_matrix[idx, ] = temp_max;
+            min_value_matrix = np.zeros((file_number, full_dim))
+            max_value_matrix = np.zeros((file_number, full_dim))
 
 
-    if cfg.min_max_normalisation:
+        # Make label files for duration model (dimension 481)
+        for idx,filename in enumerate(lab_filenames):
+            job_process = pool.apply_async(process, (filename,questions_dict, continuous_dict, cfg.bin_labels_path, cfg.bin_no_sil, cfg.indices_filepath, add_frame_features))
+            jobs.append(job_process)
+
+        for job in jobs:
+            job.get()
 
 
-        min_vector, max_vector = get_min_max(min_value_matrix,max_value_matrix, full_dim)
-
-        label_norm_info = np.concatenate((min_vector, max_vector), axis=0)
-        # Save min max normalisation
-
-        save_binary(cfg.norm_info, label_norm_info)
-        print('saved %s vectors to %s' %(min_vector.size, cfg.norm_info))
-
-
-        norm_jobs = []
         for idx,filename in enumerate(filenames):
 
-            job_normalise = pool.apply_async(normalise, (filename,full_dim, min_vector, max_vector ))
-            norm_jobs.append(job_normalise)
+            no_sil_filename = os.path.join(cfg.bin_no_sil, filename + cfg.lab_extension)
+            #Load no silence
+            no_silence = load_binary_file(no_sil_filename, full_dim)
+
+            #Extarct min-max
+            if cfg.min_max_normalisation:
+                temp_min = np.amin(no_silence, axis = 0)
+                temp_max = np.amax(no_silence, axis = 0)
+                min_value_matrix[idx, ] = temp_min;
+                max_value_matrix[idx, ] = temp_max;
 
 
-        for job in norm_jobs:
+        if cfg.min_max_normalisation:
+
+
+            min_vector, max_vector = get_min_max(min_value_matrix,max_value_matrix, full_dim)
+
+            label_norm_info = np.concatenate((min_vector, max_vector), axis=0)
+            # Save min max normalisation
+
+            save_binary(cfg.dur_norm_info, label_norm_info)
+            print('saved %s vectors to %s' %(min_vector.size, cfg.dur_norm_info))
+
+
+            norm_jobs = []
+            for idx,filename in enumerate(filenames):
+
+                job_normalise = pool.apply_async(normalise, (filename,full_dim, min_vector, max_vector, cfg.bin_no_sil, cfg.bin_no_sil_norm ))
+                norm_jobs.append(job_normalise)
+
+
+            for job in norm_jobs:
+                job.get()
+
+    if cfg.TRAIN_ACOUSTIC:
+
+        if not os.path.exists(cfg.acoustic_bin_labels_path):
+            os.system("mkdir -p %s" %cfg.acoustic_bin_labels_path)
+            os.system("mkdir -p %s" %cfg.acoustic_bin_no_sil)
+            os.system("mkdir -p %s" %cfg.acoustic_bin_no_sil_norm)
+            os.system("mkdir -p %s" %cfg.acoustic_indices_filepath)
+
+
+        # Make label files for duration model (dimension 490)
+        jobs = []
+        pool = Pool(processes=cpu_count())
+
+        add_frame_features = True
+        full_dim = cfg.lab_dim + cfg.frame_feat_dim
+
+        if cfg.min_max_normalisation:
+            min_value_matrix = np.zeros((file_number, full_dim))
+            max_value_matrix = np.zeros((file_number, full_dim))
+
+
+        # Make label files for duration model (dimension 481)
+        for idx,filename in enumerate(lab_filenames):
+
+            job_process = pool.apply_async(process, (filename,questions_dict, continuous_dict, cfg.acoustic_bin_labels_path, cfg.acoustic_bin_no_sil, cfg.acoustic_indices_filepath, add_frame_features ))
+            jobs.append(job_process)
+
+        for job in jobs:
             job.get()
+
+
+        for idx,filename in enumerate(filenames):
+
+            no_sil_filename = os.path.join(cfg.acoustic_bin_no_sil, filename + cfg.lab_extension)
+            #Load no silence
+            no_silence = load_binary_file(no_sil_filename, full_dim)
+
+            #Extarct min-max
+            if cfg.min_max_normalisation:
+                temp_min = np.amin(no_silence, axis = 0)
+                temp_max = np.amax(no_silence, axis = 0)
+                min_value_matrix[idx, ] = temp_min;
+                max_value_matrix[idx, ] = temp_max;
+
+
+        if cfg.min_max_normalisation:
+
+
+            min_vector, max_vector = get_min_max(min_value_matrix,max_value_matrix, full_dim)
+
+            label_norm_info = np.concatenate((min_vector, max_vector), axis=0)
+            # Save min max normalisation
+
+            save_binary(cfg.norm_info, label_norm_info)
+            print('saved %s vectors to %s' %(min_vector.size, cfg.norm_info))
+
+
+            norm_jobs = []
+            for idx,filename in enumerate(filenames):
+
+                job_normalise = pool.apply_async(normalise, (filename,full_dim, min_vector, max_vector,cfg.acoustic_bin_no_sil, cfg.acoustic_bin_no_sil_norm ))
+                norm_jobs.append(job_normalise)
+
+
+            for job in norm_jobs:
+                job.get()
 
     print("/n Done! /n")

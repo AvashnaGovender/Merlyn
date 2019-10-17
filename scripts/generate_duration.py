@@ -12,8 +12,9 @@ import argparse
 from dataloader import *
 from utils import *
 from models import Merlin
-import load_config_test as cfg
-from prepare_inputs import check_silence_pattern, load_binary_file
+import load_config as cfg
+from prepare_inputs import load_binary_file
+
 
 
 def np_now(x): return x.detach().cpu().numpy()
@@ -77,7 +78,7 @@ def prepare_label_with_durations(label_file_name, gen_lab_file_name, dur_feature
                 state_index = full_label[full_label_length + 1]
                 state_index = int(state_index) - 1
 
-            label_binary_flag = check_silence_pattern(full_label)
+            label_binary_flag = check_silence_pattern(full_label, cfg.silence_pattern)
 
             if len(temp_list)==1:
                 for state_index in range(1, state_number+1):
@@ -116,8 +117,13 @@ if __name__ == '__main__':
     # Parse Arguments
     parser = argparse.ArgumentParser(description='Train Merlin')
     parser.add_argument('--force_cpu', '-c', action='store_true', help='Forces CPU-only training, even when in CUDA capable environment')
-    args = parser.parse_args()
+    parser.add_argument('--validation', '-v', action='store_true', help='Computes objective metrics')
 
+    args = parser.parse_args()
+    val_mode = False
+
+    if args.validation:
+        val_mode = True
 
     if not args.force_cpu and torch.cuda.is_available():
         device = torch.device('cuda')
@@ -140,10 +146,16 @@ if __name__ == '__main__':
     duration_model.restore(model_restore_path)
 
     print("\n Loading eval data ... \n")
-    eval_dataset = get_tts_dataset(cfg.test_list,cfg.bin_no_sil_norm, None,cfg.dur_no_sil_norm, cfg.lab_dim, None, cfg.dur_dim)
+    if val_mode:
+        eval_dataset = get_tts_dataset(cfg.test_list,cfg.bin_no_sil_norm, None,cfg.dur_no_sil_norm, cfg.lab_dim, None, cfg.dur_dim)
 
-    eval_dataloader = DataLoader(eval_dataset, batch_size=1,collate_fn=lambda batch : collate_tts(batch),
-                            shuffle=True, num_workers=4)
+        eval_dataloader = DataLoader(eval_dataset, batch_size=1,collate_fn=lambda batch : collate_tts(batch),
+                                shuffle=True, num_workers=4)
+    else:
+        eval_dataset = get_tts_dataset(cfg.test_list,cfg.bin_no_sil_norm, None,None, cfg.lab_dim, None, None)
+
+        eval_dataloader = DataLoader(eval_dataset, batch_size=1,collate_fn=lambda batch : collate_tts(batch),
+                                shuffle=True, num_workers=4)
 
     device = next(duration_model.parameters()).device
 
@@ -158,14 +170,14 @@ if __name__ == '__main__':
         duration_model.eval()
         pred_dur = duration_model(x.cuda())
 
+        if val_mode:
+            r = np.sum(np_now(d.squeeze()), axis=1)
+            ref_data = np.reshape(r, (-1, 1))
+            ref_all_files_data = np.concatenate((ref_all_files_data, ref_data), axis=0)
 
-        r = np.sum(np_now(d.squeeze()), axis=1)
-        ref_data = np.reshape(r, (-1, 1))
-        ref_all_files_data = np.concatenate((ref_all_files_data, ref_data), axis=0)
-
-        g = np.sum(np_now(pred_dur.squeeze()), axis=1)
-        gen_data = np.reshape(g, (-1, 1))
-        gen_all_files_data = np.concatenate((gen_all_files_data, gen_data), axis=0)
+            g = np.sum(np_now(pred_dur.squeeze()), axis=1)
+            gen_data = np.reshape(g, (-1, 1))
+            gen_all_files_data = np.concatenate((gen_all_files_data, gen_data), axis=0)
 
         denormalised_feats = denormalise(np_now(pred_dur))
         gen_features = np.int32(np.round(denormalised_feats))
@@ -178,13 +190,14 @@ if __name__ == '__main__':
 
         save_binary(filename, gen_features)
 
-    rmse = compute_rmse(ref_all_files_data, gen_all_files_data)
+    if val_mode:
+        rmse = compute_rmse(ref_all_files_data, gen_all_files_data)
 
-    r = ref_all_files_data.squeeze()
-    h = gen_all_files_data.squeeze()
-    corr  = compute_corr(r, h)
-    msg  = f'RMSE: {rmse} CORR: {corr}'
-    print(msg)
+        r = ref_all_files_data.squeeze()
+        h = gen_all_files_data.squeeze()
+        corr  = compute_corr(r, h)
+        msg  = f'RMSE: {rmse} CORR: {corr}'
+        print(msg)
 
 
     print('\n\nDone.\n')

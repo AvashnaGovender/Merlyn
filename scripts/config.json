@@ -1,15 +1,16 @@
 
 {
-  "model_id" : "merlin_torch1",
+  "model_id" : "merlin_test_final",
 
   "file_id_list": "../file_id_list.scp",
   "train_list" : "../train.scp",
   "valid_list" : "../valid.scp",
-  "test_list" : "../test.scp",
+  "test_list" : "../eval.scp",
   "labels_dir" : "../label_state_align/",
-  "lf0_dir" : "../merlin_torch1/acoustic_feats/lf0",
-  "mgc_dir" : "../merlin_torch1/acoustic_feats/mgc",
-  "bap_dir" : "../merlin_torch1/acoustic_feats/bap",
+  "test_labels_dir" : "../label_state_align/",
+  "lf0_dir" : "../acoustics/lf0",
+  "mgc_dir" : "../acoustics/mgc",
+  "bap_dir" : "../acoustics/bap",
 
   "question_filepath" : "../questions_dnn_481.hed",
 
@@ -17,11 +18,11 @@
   "hidden_size" : 1024,
   "lstm_hidden_size" : 384,
 
-  "batch_size"  : 16,
+  "batch_size"  : 8,
   "buffer" : 200000,
-  "num_epochs" : 30,
+  "num_epochs" : 35,
 
-  "lab_dim" : 490,
+  "lab_dim" : 481,
   "cmp_dim" : 187,
   "dur_dim" : 5,
 
@@ -36,7 +37,6 @@
   "silence_pattern" :  "*-#+*" ,
 
 
-  "add_frame_features" : false,
   "frame_feat_dim" : 9,
 
   "remove_silence" : true,
@@ -52,7 +52,7 @@
   "bap_dim" : 1,
 
 
-  "lr" : 0.002,
+  "lr" : 0.001,
   "l1_reg" : 0.00001,
   "dropout_rate" : 0.0,
 
@@ -60,7 +60,7 @@
   "reduce_lr" : false,
   "checkpoint_every_n" : 5,
 
-  "DURATION" : true,
-  "ACOUSTIC" : false
+  "TRAIN_DURATION" : false,
+  "TRAIN_ACOUSTIC" : true
 
 }

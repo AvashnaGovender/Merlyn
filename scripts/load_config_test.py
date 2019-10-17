@@ -33,12 +33,18 @@ bin_labels_path = os.path.join(root, model_id, label_feats_dir, "binary_label_48
 acoustic_bin_labels_path = os.path.join(root, model_id, label_feats_dir, "binary_label_490")
 
 bin_no_sil_norm = os.path.join(root, model_id, label_feats_dir,"nn_no_silence_lab_norm_481")
-acoustic_bin_no_sil_norm = os.path.join(root, model_id, label_feats_dir,"nn_no_silence_lab_norm_490 ")
+acoustic_bin_no_sil_norm = os.path.join(root, model_id, label_feats_dir,"nn_no_silence_lab_norm_490")
 
 indices_filepath = os.path.join(root, model_id, label_feats_dir,"non_silence_indices")
+acoustic_indices_filepath = os.path.join(root, model_id, label_feats_dir,"ac_non_silence_indices")
+
 bin_acoustic_feats = os.path.join(root, model_id, acoustic_feats_dir,"norm_feats")
 output_acoustic = os.path.join(root, model_id, acoustic_feats_dir,"nn_mgc_lf0_vuv_bap_187") # mgc, lf0, vuv, bap feats with 180+3+1+3
-norm_info = os.path.join(root, model_id, acoustic_feats_dir,"norm_info.norm")
+acoustic_no_sil = os.path.join(root, model_id, acoustic_feats_dir,"acoustic_no_sil") # mgc, lf0, vuv, bap feats with 180+3+1+3
+
+norm_info = os.path.join(root, model_id, label_feats_dir,"norm_info.norm")
+ac_norm_info = os.path.join(root, model_id, label_feats_dir,"ac_norm_info.norm")
+var = os.path.join(root, model_id, acoustic_feats_dir,"var")
 
 
 duration_path = os.path.join(root,model_id,duration_feats_dir, "durations")            # durations output directory
@@ -49,6 +55,8 @@ dur_norm_info = os.path.join(root,model_id,duration_feats_dir, "dur_norm_info.no
 gen_path = os.path.join(root,model_id, "gen")
 
 dur_latest_weights = os.path.join(root, model_id, "models", "duration_model", "latest_model.pyt" )
+acoustic_latest_weights = os.path.join(root, model_id, "models", "acoustic_model", "latest_model.pyt" )
+
 
 lab_extension = ".lab"
 dur_extension = ".dur"
@@ -83,7 +91,6 @@ frame_length= data['frame_length']
 label_dimension= data['label_dimension']
 silence_pattern= data['silence_pattern']
 
-add_frame_features = data['add_frame_features']
 frame_feat_dim = data['frame_feat_dim']
 
 remove_silence = data['remove_silence']
@@ -102,8 +109,8 @@ dmgc_dim = mgc_dim * 3
 dbap_dim =  bap_dim * 3
 dlf0_dim = lf0_dim * 3
 
-feats = {'mgc':dmgc_dim,'vuv':vuv_dim,'bap':dbap_dim,'lf0':dlf0_dim}
-feats_in = {'mgc':mgc_dim,'vuv':vuv_dim,'bap':bap_dim,'lf0':lf0_dim}
+feats = {'mgc':dmgc_dim,'vuv':vuv_dim,'lf0':dlf0_dim, 'bap':dbap_dim}
+feats_in = {'mgc':mgc_dim,'vuv':vuv_dim,'lf0':lf0_dim, 'bap':bap_dim}
 
 feat_dimension = dmgc_dim + dbap_dim + dlf0_dim + 1
 compute_dynamic = True
@@ -118,3 +125,7 @@ checkpoint_every_n = data['checkpoint_every_n']
 
 TRAIN_DURATION = data['TRAIN_DURATION']
 TRAIN_ACOUSTIC = data['TRAIN_ACOUSTIC']
+
+if TRAIN_ACOUSTIC:
+    batch_size = 256
+    lab_dim = lab_dim + frame_feat_dim

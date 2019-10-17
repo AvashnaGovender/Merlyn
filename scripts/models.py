@@ -14,6 +14,7 @@ class Merlin(torch.nn.Module):
         self.output_dim = output_dim
         self.lstm = lstm
 
+        print("Merlin Model", self.input_size,self.hidden_size, self.output_dim)
         self.fc1 = torch.nn.Linear(self.input_size, self.hidden_size)
         self.fc2 = torch.nn.Linear(self.hidden_size, self.hidden_size)
         self.fc3 = torch.nn.Linear(self.hidden_size, self.hidden_size)
@@ -31,17 +32,26 @@ class Merlin(torch.nn.Module):
         self.relu = torch.nn.ReLU()
         self.sigmoid = torch.nn.Sigmoid()
 
+        self.dropout = torch.nn.Dropout(p=0.5)
+
     def forward(self, x):
 
-        hidden1 = torch.tanh(self.fc1(x))
-        hidden2 = torch.tanh(self.fc2(hidden1))
-        hidden3 = torch.tanh(self.fc3(hidden2))
-        hidden4 = torch.tanh(self.fc4(hidden3))
-        hidden5 = torch.tanh(self.fc5(hidden4))
+        hidden1 = self.relu(self.fc1(x))
+        hidden2 = self.relu(self.fc2(hidden1))
+        hidden3 = self.relu(self.fc3(hidden2))
+        hidden4 = self.relu(self.fc4(hidden3))
+        hidden5 = self.relu(self.fc5(hidden4))
+
+        # hidden1 = torch.tanh(self.fc1(x))
+        # hidden2 = torch.tanh(self.fc2(hidden1))
+        # hidden3 = torch.tanh(self.fc3(hidden2))
+        # hidden4 = torch.tanh(self.fc4(hidden3))
+        # hidden5 = torch.tanh(self.fc5(hidden4))
+
         if self.lstm:
             out, hidden6 = self.layer6(hidden5)
         else:
-            hidden6 = torch.tanh(self.layer6(hidden5))
+            hidden6 = self.relu(self.layer6(hidden5))
 
         output = self.fc_out(hidden6)
         #output = self.sigmoid(output)
